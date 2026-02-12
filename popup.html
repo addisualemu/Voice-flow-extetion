@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Text Saver</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Text Saver</h1>
+
+    <!-- Input area -->
+    <div class="input-section">
+      <textarea id="textInput" placeholder="Type or paste text here…" rows="4"></textarea>
+      <button id="saveBtn" class="btn btn-primary">Save to Firebase</button>
+    </div>
+
+    <!-- Status message -->
+    <div id="status" class="status hidden"></div>
+
+    <!-- Recent saves -->
+    <div class="history-section">
+      <h2>Recent Saves</h2>
+      <ul id="historyList" class="history-list">
+        <li class="empty-state">No saved texts yet.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs (compat builds for simpler usage) -->
+  <script src="libs/firebase-app-compat.js"></script>
+  <script src="libs/firebase-firestore-compat.js"></script>
+
+  <!-- App scripts -->
+  <script src="firebase-config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

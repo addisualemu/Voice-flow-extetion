@@ -1,0 +1,16 @@
+# Firebase SDK files (downloaded via setup.sh)
+libs/firebase-app-compat.js
+libs/firebase-firestore-compat.js
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if using npm later)
+node_modules/
