@@ -16,6 +16,10 @@ curl -sL "https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firest
   -o "${LIBS_DIR}/firebase-firestore-compat.js"
 echo "  -> firebase-firestore-compat.js downloaded."
 
+curl -sL "https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth-compat.js" \
+  -o "${LIBS_DIR}/firebase-auth-compat.js"
+echo "  -> firebase-auth-compat.js downloaded."
+
 echo ""
 echo "Done! Firebase SDK files are ready in ${LIBS_DIR}/"
 echo ""

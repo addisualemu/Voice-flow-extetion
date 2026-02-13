@@ -24,7 +24,8 @@
   "background": {
     "service_worker": "background.js"
   },
+  "options_page": "options.html",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com https://*.firebase.com wss://*.firebaseio.com"
   }
 }
