@@ -29,8 +29,43 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load user ID on popup open
   loadUserId();
 
+  // Stop recording (e.g. when user clicks input or saves)
+  function stopRecording() {
+    if (!recognition || !isListening) return;
+    isListening = false;
+    try { recognition.stop(); } catch (_) {}
+    finalTranscript = "";
+    interimTranscript = "";
+    dictateBtn.classList.remove("listening");
+    dictateBtn.disabled = false;
+    dictateBtn.title = "Start voice dictate";
+  }
+
+  // Start recording (auto on popup open, or when user clicks mic after stopping)
+  function startRecording() {
+    if (!recognition || isListening) return;
+    textBeforeDictate = textInput.value;
+    finalTranscript = "";
+    interimTranscript = "";
+    isListening = true;
+    dictateBtn.classList.add("listening");
+    dictateBtn.title = "Stop dictate (click input or mic)";
+    dictateBtn.disabled = true;
+    try {
+      recognition.start();
+      dictateBtn.disabled = false;
+      showStatus("Listening… Speak or click input to stop.", "success");
+    } catch (err) {
+      isListening = false;
+      dictateBtn.classList.remove("listening");
+      dictateBtn.disabled = false;
+      showStatus("Could not start voice input.", "error");
+    }
+  }
+
   // Save button click handler
   saveBtn.addEventListener("click", async () => {
+    stopRecording();
     const text = textInput.value.trim();
     if (!text) {
       showStatus("Please enter some text first.", "error");
@@ -88,6 +123,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Click/focus on input stops recording (user can resume with mic button)
+  textInput.addEventListener("focus", () => {
+    if (isListening) {
+      stopRecording();
+      showStatus("Recording stopped. Click 🎤 to start again.", "success");
+    }
+  });
+
   // Allow Ctrl+Enter / Cmd+Enter to save
   textInput.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -122,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         dictateBtn.classList.remove("listening");
         dictateBtn.disabled = false;
-        dictateBtn.title = "Voice dictate";
+        dictateBtn.title = "Start voice dictate";
       }
     };
 
@@ -152,30 +195,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     dictateBtn.addEventListener("click", () => {
       if (isListening) {
-        isListening = false;
-        recognition.stop();
-        finalTranscript = "";
-        interimTranscript = "";
+        stopRecording();
         return;
       }
-      textBeforeDictate = textInput.value;
-      finalTranscript = "";
-      interimTranscript = "";
-      isListening = true;
-      dictateBtn.classList.add("listening");
-      dictateBtn.title = "Stop dictate (click again)";
-      dictateBtn.disabled = true;
-      try {
-        recognition.start();
-        dictateBtn.disabled = false;
-        showStatus("Listening… Speak now.", "success");
-      } catch (err) {
-        isListening = false;
-        dictateBtn.classList.remove("listening");
-        dictateBtn.disabled = false;
-        showStatus("Could not start voice input.", "error");
-      }
+      startRecording();
     });
+
+    // Auto-start recording shortly after popup opens
+    setTimeout(() => startRecording(), 400);
   } else if (dictateBtn) {
     dictateBtn.style.display = "none";
   }
