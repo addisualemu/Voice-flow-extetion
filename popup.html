@@ -9,26 +9,21 @@
 <body>
   <div class="container">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <h1 style="margin-bottom: 0;">Text Saver</h1>
-      <a href="#" id="settingsLink" style="font-size: 12px; color: #6b7280; text-decoration: none; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s;" title="Open Settings">⚙️ Settings</a>
+      <h1 style="margin-bottom: 0;">Voice Flow</h1>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <a href="https://studio-6322617027-3e57b.web.app/" target="_blank" rel="noopener noreferrer" style="font-size: 12px; color: #4f46e5; text-decoration: none; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s;" title="Open VoiceFlow Studio">Open VoiceFlow</a>
+        <a href="#" id="settingsLink" style="font-size: 12px; color: #6b7280; text-decoration: none; padding: 4px 8px; border-radius: 4px; transition: background-color 0.2s;" title="Open Settings">⚙️ Settings</a>
+      </div>
     </div>
 
     <!-- Input area -->
     <div class="input-section">
       <textarea id="textInput" placeholder="Type or paste text here…" rows="4"></textarea>
-      <button id="saveBtn" class="btn btn-primary">Save to Firebase</button>
+      <button id="saveBtn" class="btn btn-primary">Save </button>
     </div>
 
     <!-- Status message -->
     <div id="status" class="status hidden"></div>
-
-    <!-- Recent saves -->
-    <div class="history-section">
-      <h2>Recent Saves</h2>
-      <ul id="historyList" class="history-list">
-        <li class="empty-state">No saved texts yet.</li>
-      </ul>
-    </div>
   </div>
 
   <!-- Firebase SDKs (compat builds for simpler usage) -->

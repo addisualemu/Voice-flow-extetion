@@ -2,7 +2,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const textInput = document.getElementById("textInput");
   const saveBtn = document.getElementById("saveBtn");
   const statusEl = document.getElementById("status");
-  const historyList = document.getElementById("historyList");
   const settingsLink = document.getElementById("settingsLink");
   
   let currentUserId = null;
@@ -21,9 +20,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Load user ID and recent saves on popup open
+  // Load user ID on popup open
   loadUserId();
-  loadHistory();
 
   // Save button click handler
   saveBtn.addEventListener("click", async () => {
@@ -57,7 +55,6 @@ document.addEventListener("DOMContentLoaded", () => {
       await saveTextToFirebase(text, currentUserId);
       textInput.value = "";
       showStatus("Text saved successfully!", "success");
-      loadHistory();
     } catch (err) {
       const errorMsg = err.message && (err.message.includes("API key not found") || err.message.includes("configuration not found"))
         ? "Firebase API key not configured. Please set up your Firebase API key in settings."
@@ -107,66 +104,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await chrome.storage.sync.get(["userId"]);
       if (result.userId) {
         currentUserId = result.userId;
-      } else {
-        historyList.innerHTML = '<li class="empty-state">Please configure your User ID in settings to use this extension.</li>';
       }
     } catch (error) {
       console.error("Error loading user ID:", error);
     }
-  }
-
-  // Load and render recent saved texts
-  async function loadHistory() {
-    if (!currentUserId) {
-      return; // Already shown message in loadUserId
-    }
-
-    try {
-      const texts = await getRecentTexts(10, currentUserId);
-
-      if (texts.length === 0) {
-        historyList.innerHTML =
-          '<li class="empty-state">No saved texts yet.</li>';
-        return;
-      }
-
-      historyList.innerHTML = texts
-        .map((item) => {
-          const truncated =
-            item.detail && item.detail.length > 120
-              ? item.detail.substring(0, 120) + "…"
-              : item.detail || "";
-          const stage = item.stage || "Entry";
-          const completed = item.completed ? "✓" : "○";
-
-          return `<li>
-            <span class="source-badge">${stage}</span>
-            <span style="margin-left: 4px; color: ${item.completed ? '#10b981' : '#6b7280'}; font-size: 12px;">${completed}</span>
-            <span class="text-content">${escapeHtml(truncated)}</span>
-          </li>`;
-        })
-        .join("");
-    } catch (err) {
-      const errorMsg = err.message && (err.message.includes("API key not found") || err.message.includes("configuration not found"))
-        ? "Firebase API key not configured. <a href='#' id='settingsLink' style='color: #4f46e5; text-decoration: underline;'>Open Settings</a>"
-        : "Could not load history.";
-      historyList.innerHTML = `<li class="empty-state">${errorMsg}</li>`;
-      
-      // Add click handler for settings link
-      const settingsLink = document.getElementById("settingsLink");
-      if (settingsLink) {
-        settingsLink.addEventListener("click", (e) => {
-          e.preventDefault();
-          chrome.runtime.openOptionsPage();
-        });
-      }
-    }
-  }
-
-  // Escape HTML to prevent XSS when rendering user text
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
   }
 });
