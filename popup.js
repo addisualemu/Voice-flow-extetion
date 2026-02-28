@@ -1,10 +1,16 @@
 document.addEventListener("DOMContentLoaded", () => {
   const textInput = document.getElementById("textInput");
   const saveBtn = document.getElementById("saveBtn");
+  const dictateBtn = document.getElementById("dictateBtn");
   const statusEl = document.getElementById("status");
   const settingsLink = document.getElementById("settingsLink");
   
   let currentUserId = null;
+  let recognition = null;
+  let isListening = false;
+  let textBeforeDictate = "";
+  let finalTranscript = "";
+  let interimTranscript = "";
 
   // Settings link click handler
   if (settingsLink) {
@@ -88,6 +94,91 @@ document.addEventListener("DOMContentLoaded", () => {
       saveBtn.click();
     }
   });
+
+  // Voice dictate (Web Speech API)
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition && dictateBtn) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (e) => {
+      interimTranscript = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          finalTranscript += transcript + " ";
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      textInput.value = textBeforeDictate + finalTranscript + interimTranscript;
+    };
+
+    recognition.onend = () => {
+      if (isListening) {
+        try { recognition.start(); } catch (_) {}
+      } else {
+        dictateBtn.classList.remove("listening");
+        dictateBtn.disabled = false;
+        dictateBtn.title = "Voice dictate";
+      }
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error === "not-allowed") {
+        statusEl.textContent = "Chrome didn’t ask for mic (common for extensions). Allow it below:";
+        statusEl.className = "status error";
+        const micLink = document.createElement("a");
+        micLink.href = "#";
+        micLink.textContent = "Open microphone settings →";
+        micLink.style.cssText = "color: #4f46e5; text-decoration: underline; cursor: pointer; font-size: 12px; margin-top: 6px; display: block;";
+        micLink.onclick = (ev) => {
+          ev.preventDefault();
+          chrome.tabs.create({ url: "chrome://extensions/?id=jflaoljfdinoamlgliflagnjhmokamec" });
+        };
+        statusEl.appendChild(micLink);
+        setTimeout(() => {
+          statusEl.className = "status hidden";
+        }, 20000);
+      } else if (e.error !== "aborted") {
+        showStatus("Voice input error: " + (e.error || "unknown"), "error");
+      }
+      isListening = false;
+      dictateBtn.classList.remove("listening");
+      dictateBtn.disabled = false;
+    };
+
+    dictateBtn.addEventListener("click", () => {
+      if (isListening) {
+        isListening = false;
+        recognition.stop();
+        finalTranscript = "";
+        interimTranscript = "";
+        return;
+      }
+      textBeforeDictate = textInput.value;
+      finalTranscript = "";
+      interimTranscript = "";
+      isListening = true;
+      dictateBtn.classList.add("listening");
+      dictateBtn.title = "Stop dictate (click again)";
+      dictateBtn.disabled = true;
+      try {
+        recognition.start();
+        dictateBtn.disabled = false;
+        showStatus("Listening… Speak now.", "success");
+      } catch (err) {
+        isListening = false;
+        dictateBtn.classList.remove("listening");
+        dictateBtn.disabled = false;
+        showStatus("Could not start voice input.", "error");
+      }
+    });
+  } else if (dictateBtn) {
+    dictateBtn.style.display = "none";
+  }
 
   // Show a status message that auto-hides after 3 seconds
   function showStatus(message, type) {

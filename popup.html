@@ -18,7 +18,12 @@
 
     <!-- Input area -->
     <div class="input-section">
-      <textarea id="textInput" placeholder="Type or paste text here…" rows="4"></textarea>
+      <div class="textarea-wrap">
+        <textarea id="textInput" placeholder="Type or paste text here…" rows="4"></textarea>
+        <button type="button" id="dictateBtn" class="dictate-btn" title="Voice dictate" aria-label="Start voice dictate">
+          <span class="mic-icon">🎤</span>
+        </button>
+      </div>
       <button id="saveBtn" class="btn btn-primary">Save </button>
     </div>
 
