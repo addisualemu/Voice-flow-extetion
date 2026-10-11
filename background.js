@@ -1,94 +1,46 @@
-// Import Firebase SDKs for the service worker context
-importScripts("libs/firebase-app-compat.js", "libs/firebase-firestore-compat.js");
+// Context-menu saves run in the service worker, which has no localStorage.
+// Firebase Auth keeps the session in localStorage, so the write is done
+// from the offscreen document, which shares storage with the popup and options page.
 
-// Hardcoded Firebase configuration values (only API key is user-configurable)
-const FIREBASE_CONFIG = {
-  authDomain: "studio-6322617027-3e57b.firebaseapp.com",
-  projectId: "studio-6322617027-3e57b",
-  storageBucket: "studio-6322617027-3e57b.firebasestorage.app",
-  messagingSenderId: "634923058356",
-  appId: "1:634923058356:web:241b9a6016cb37523443e1"
-};
-
-// Firebase configuration loaded from storage
-let firebaseConfig = null;
-let db = null;
-let firebaseInitialized = false;
-
-/**
- * Initialize Firebase with configuration from storage
- */
-async function initializeFirebase() {
-  if (firebaseInitialized && db) {
-    return db;
+async function ensureOffscreen() {
+  if (await chrome.offscreen.hasDocument()) {
+    return;
   }
 
-  try {
-    // Load API key from chrome.storage
-    const result = await chrome.storage.sync.get("firebaseApiKey");
-    
-    if (!result.firebaseApiKey) {
-      throw new Error("Firebase API key not found. Please configure it in the extension settings.");
-    }
-
-    // Combine user's API key with hardcoded config
-    firebaseConfig = {
-      apiKey: result.firebaseApiKey,
-      authDomain: FIREBASE_CONFIG.authDomain,
-      projectId: FIREBASE_CONFIG.projectId,
-      storageBucket: FIREBASE_CONFIG.storageBucket,
-      messagingSenderId: FIREBASE_CONFIG.messagingSenderId,
-      appId: FIREBASE_CONFIG.appId
-    };
-
-    // Validate API key is present
-    if (!firebaseConfig.apiKey) {
-      throw new Error("Firebase API key is missing. Please check your settings.");
-    }
-
-    // Reinitialize if already initialized (for config updates)
-    if (firebaseInitialized) {
-      try {
-        firebase.app().delete();
-      } catch (e) {
-        // App might not exist yet
-      }
-    }
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    firebaseInitialized = true;
-
-    return db;
-  } catch (error) {
-    console.error("Error initializing Firebase:", error);
-    throw error;
-  }
+  await chrome.offscreen.createDocument({
+    url: "offscreen.html",
+    reasons: [chrome.offscreen.Reason.LOCAL_STORAGE],
+    justification: "Firebase Auth keeps the signed-in session in localStorage so selected text can be saved."
+  });
 }
 
-// Listen for config changes
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "sync" && (changes.firebaseApiKey || changes.userId)) {
-    // Reset initialization when API key changes
-    firebaseInitialized = false;
-    firebaseConfig = null;
-    db = null;
-  }
-});
+async function saveThroughOffscreen(text) {
+  await ensureOffscreen();
+  let lastError = null;
 
-// Listen for reload config message
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "reloadConfig") {
-    firebaseInitialized = false;
-    firebaseConfig = null;
-    db = null;
-    sendResponse({ success: true });
-    return true;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "save-text", text });
+      if (response) {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
   }
-});
 
-// Create context menu item when extension is installed
+  throw lastError || new Error("Could not save.");
+}
+
+function setBadge(tabId, text, color, ms) {
+  chrome.action.setBadgeText({ text, tabId });
+  chrome.action.setBadgeBackgroundColor({ color, tabId });
+  setTimeout(() => {
+    chrome.action.setBadgeText({ text: "", tabId });
+  }, ms);
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "saveSelectedText",
@@ -97,55 +49,31 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "saveSelectedText" && info.selectionText) {
-    try {
-      // Get user ID from settings
-      const result = await chrome.storage.sync.get("userId");
-      if (!result.userId) {
-        chrome.action.setBadgeText({ text: "NO ID", tabId: tab.id });
-        chrome.action.setBadgeBackgroundColor({
-          color: "#f59e0b",
-          tabId: tab.id
-        });
-        setTimeout(() => {
-          chrome.action.setBadgeText({ text: "", tabId: tab.id });
-        }, 3000);
+  if (info.menuItemId !== "saveSelectedText" || !info.selectionText) {
+    return;
+  }
+
+  const text = info.selectionText.trim();
+  if (!text || !tab || tab.id == null) {
+    return;
+  }
+
+  try {
+    const response = await saveThroughOffscreen(text);
+
+    if (!response || !response.ok) {
+      const message = (response && response.error) || "";
+      if (message.includes("Not connected") || message.includes("PIN")) {
+        setBadge(tab.id, "PIN", "#f59e0b", 3000);
         return;
       }
-
-      const db = await initializeFirebase();
-      const userId = result.userId;
-      
-      // Save to users/{userId}/tasks/{taskId}
-      await db.collection("users").doc(userId).collection("tasks").add({
-        completed: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        detail: info.selectionText,
-        stage: "Entry"
-      });
-
-      // Show a badge briefly to confirm save
-      chrome.action.setBadgeText({ text: "OK", tabId: tab.id });
-      chrome.action.setBadgeBackgroundColor({
-        color: "#4f46e5",
-        tabId: tab.id
-      });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "", tabId: tab.id });
-      }, 2000);
-    } catch (error) {
-      console.error("Error saving selected text:", error);
-
-      chrome.action.setBadgeText({ text: "ERR", tabId: tab.id });
-      chrome.action.setBadgeBackgroundColor({
-        color: "#dc2626",
-        tabId: tab.id
-      });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "", tabId: tab.id });
-      }, 2000);
+      throw new Error(message || "Failed to save.");
     }
+
+    setBadge(tab.id, "OK", "#4f46e5", 2000);
+  } catch (error) {
+    console.error("Error saving selected text:", error);
+    setBadge(tab.id, "ERR", "#dc2626", 2000);
   }
 });

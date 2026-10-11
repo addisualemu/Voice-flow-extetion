@@ -1,5 +1,8 @@
-// Hardcoded Firebase configuration values (only API key is user-configurable)
+// Same public client config as the Voice Flow web app.
+// The API key identifies the Firebase project. It is not a user secret.
+// Firestore rules and Firebase Auth decide what a caller can do.
 const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB_0R7hubnIc_wfnyOVBDhPLG6QRbEXu54",
   authDomain: "studio-6322617027-3e57b.firebaseapp.com",
   projectId: "studio-6322617027-3e57b",
   storageBucket: "studio-6322617027-3e57b.firebasestorage.app",
@@ -7,80 +10,91 @@ const FIREBASE_CONFIG = {
   appId: "1:634923058356:web:241b9a6016cb37523443e1"
 };
 
-// Firebase configuration loaded from settings
-let firebaseConfig = null;
-let db = null;
-let firebaseInitialized = false;
+const LINK_PIN_URL = "https://us-central1-studio-6322617027-3e57b.cloudfunctions.net/linkWithPin";
 
-/**
- * Initialize Firebase with configuration from storage
- */
-async function initializeFirebase() {
-  if (firebaseInitialized) {
-    return db;
+function initializeFirebase() {
+  if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
   }
-
-  try {
-    // Load API key from chrome.storage
-    const result = await chrome.storage.sync.get("firebaseApiKey");
-    
-    if (!result.firebaseApiKey) {
-      throw new Error("Firebase API key not found. Please configure it in the extension settings.");
-    }
-
-    // Combine user's API key with hardcoded config
-    firebaseConfig = {
-      apiKey: result.firebaseApiKey,
-      authDomain: FIREBASE_CONFIG.authDomain,
-      projectId: FIREBASE_CONFIG.projectId,
-      storageBucket: FIREBASE_CONFIG.storageBucket,
-      messagingSenderId: FIREBASE_CONFIG.messagingSenderId,
-      appId: FIREBASE_CONFIG.appId
-    };
-
-    // Validate API key is present
-    if (!firebaseConfig.apiKey) {
-      throw new Error("Firebase API key is missing. Please check your settings.");
-    }
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    firebaseInitialized = true;
-
-    return db;
-  } catch (error) {
-    console.error("Error initializing Firebase:", error);
-    throw error;
-  }
+  return firebase.firestore();
 }
 
-// Listen for config changes
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "sync" && changes.firebaseApiKey) {
-    // Reset initialization when API key changes
-    firebaseInitialized = false;
-    firebaseConfig = null;
-    db = null;
-  }
-});
+function waitForSignedInUser() {
+  initializeFirebase();
+  const auth = firebase.auth();
+  return new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+}
 
 /**
- * Save a text snippet to the users/{userId}/tasks collection in Firestore.
- * @param {string} text - The text to save (detail field).
- * @param {string} userId - The authenticated user's ID.
- * @returns {Promise<string>} The document ID of the saved entry.
+ * Exchange a Voice Flow connection PIN for a Firebase Auth session.
+ * The PIN is sent to Cloud Function linkWithPin, which reads linkingPins
+ * with the Admin SDK and returns a custom token. The PIN is not stored.
+ * @param {string} pin
+ * @returns {Promise<firebase.User>}
  */
-async function saveTextToFirebase(text, userId) {
-  if (!userId) {
-    throw new Error("User ID is required. Please sign in first.");
+async function connectWithPin(pin) {
+  const normalized = String(pin || "").replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9]{4,16}$/.test(normalized)) {
+    throw new Error("Enter the connection PIN from Voice Flow.");
+  }
+
+  initializeFirebase();
+  await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+  let response;
+  try {
+    response = await fetch(LINK_PIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: normalized })
+    });
+  } catch (error) {
+    throw new Error("Could not reach Voice Flow. Check your connection and try again.");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 404) {
+    throw new Error("Connection service is not available yet.");
+  }
+  if (!response.ok || !data.token) {
+    throw new Error(data.error || "Could not connect with that PIN.");
+  }
+
+  const credential = await firebase.auth().signInWithCustomToken(data.token);
+  try {
+    await chrome.storage.sync.remove(["firebaseApiKey", "userId"]);
+  } catch (error) {
+    // Older installs stored these. Signing in does not depend on deleting them.
+  }
+  return credential.user;
+}
+
+async function disconnectAccount() {
+  initializeFirebase();
+  await firebase.auth().signOut();
+}
+
+/**
+ * Save a text snippet to users/{uid}/tasks for the signed-in user.
+ * @param {string} text
+ * @returns {Promise<string>} The new task document id.
+ */
+async function saveTextToFirebase(text) {
+  const user = await waitForSignedInUser();
+  if (!user) {
+    throw new Error("Not connected. Enter your connection PIN in settings.");
   }
 
   try {
-    const firestore = await initializeFirebase();
+    const firestore = initializeFirebase();
     const docRef = await firestore
       .collection("users")
-      .doc(userId)
+      .doc(user.uid)
       .collection("tasks")
       .add({
         completed: false,
@@ -91,37 +105,9 @@ async function saveTextToFirebase(text, userId) {
     return docRef.id;
   } catch (error) {
     console.error("Error saving text to Firebase:", error);
-    throw error;
-  }
-}
-
-/**
- * Fetch recent saved texts from Firestore, ordered by creation time.
- * @param {number} [limit=10] - Maximum number of entries to fetch.
- * @param {string} userId - The authenticated user's ID.
- * @returns {Promise<Array>} Array of saved text objects.
- */
-async function getRecentTexts(limit = 10, userId) {
-  if (!userId) {
-    throw new Error("User ID is required. Please sign in first.");
-  }
-
-  try {
-    const firestore = await initializeFirebase();
-    const snapshot = await firestore
-      .collection("users")
-      .doc(userId)
-      .collection("tasks")
-      .orderBy("createdAt", "desc")
-      .limit(limit)
-      .get();
-
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-  } catch (error) {
-    console.error("Error fetching texts from Firebase:", error);
+    if (error.code === "permission-denied") {
+      throw new Error("Firestore rejected the save. Connect again from settings.");
+    }
     throw error;
   }
 }

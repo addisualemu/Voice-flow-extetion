@@ -1,100 +1,71 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById("firebaseForm");
-  const saveBtn = document.getElementById("saveBtn");
-  const testBtn = document.getElementById("testBtn");
+  const form = document.getElementById("pinForm");
+  const connectBtn = document.getElementById("connectBtn");
+  const disconnectBtn = document.getElementById("disconnectBtn");
   const statusEl = document.getElementById("status");
+  const connectedPanel = document.getElementById("connectedPanel");
+  const connectedEmail = document.getElementById("connectedEmail");
 
-  // Load saved configuration
-  loadConfig();
+  let statusToken = 0;
 
-  // Save configuration
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    await saveConfig();
+  watchAccount();
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await connect();
   });
 
-  // Test connection
-  testBtn.addEventListener("click", async () => {
-    await testConnection();
-  });
-
-  async function loadConfig() {
+  disconnectBtn.addEventListener("click", async () => {
+    disconnectBtn.disabled = true;
     try {
-      const result = await chrome.storage.sync.get(["firebaseApiKey", "userId"]);
-      if (result.firebaseApiKey) {
-        document.getElementById("apiKey").value = result.firebaseApiKey || "";
-      }
-      if (result.userId) {
-        document.getElementById("userId").value = result.userId || "";
-      }
+      await disconnectAccount();
+      showStatus("Disconnected.", "success");
     } catch (error) {
-      console.error("Error loading config:", error);
-      showStatus("Error loading saved configuration.", "error");
-    }
-  }
-
-  async function saveConfig() {
-    const apiKey = document.getElementById("apiKey").value.trim();
-    const userId = document.getElementById("userId").value.trim();
-
-    // Validate required fields
-    if (!apiKey) {
-      showStatus("Please enter your Firebase API Key.", "error");
-      return;
-    }
-    
-    if (!userId) {
-      showStatus("Please enter your User ID.", "error");
-      return;
-    }
-
-    saveBtn.disabled = true;
-    saveBtn.textContent = "Saving...";
-
-    try {
-      await chrome.storage.sync.set({ 
-        firebaseApiKey: apiKey,
-        userId: userId
-      });
-      showStatus("Configuration saved successfully! The extension will use these settings.", "success");
-      
-      // Notify background script to reload config
-      chrome.runtime.sendMessage({ type: "reloadConfig" });
-    } catch (error) {
-      console.error("Error saving config:", error);
-      showStatus("Error saving configuration. Please try again.", "error");
+      showStatus(error.message || "Could not disconnect.", "error");
     } finally {
-      saveBtn.disabled = false;
-      saveBtn.textContent = "Save Configuration";
+      disconnectBtn.disabled = false;
     }
+  });
+
+  function watchAccount() {
+    initializeFirebase();
+    firebase.auth().onAuthStateChanged((user) => {
+      if (user) {
+        connectedPanel.classList.remove("hidden");
+        connectedEmail.textContent = user.email || "your Voice Flow account";
+      } else {
+        connectedPanel.classList.add("hidden");
+        connectedEmail.textContent = "";
+      }
+    });
   }
 
-  async function testConnection() {
-    const apiKey = document.getElementById("apiKey").value.trim();
+  async function connect() {
+    const pin = document.getElementById("pin").value;
+    connectBtn.disabled = true;
+    connectBtn.textContent = "Connecting...";
 
-    // Validate API key is filled
-    if (!apiKey) {
-      showStatus("Please enter your Firebase API Key before testing.", "error");
-      return;
+    try {
+      const user = await connectWithPin(pin);
+      document.getElementById("pin").value = "";
+      const who = user.email || "your Voice Flow account";
+      showStatus("Connected as " + who + ".", "success");
+    } catch (error) {
+      showStatus(error.message || "Could not connect with that PIN.", "error");
+    } finally {
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
     }
-
-    testBtn.disabled = true;
-    testBtn.textContent = "Testing...";
-    showStatus("API Key looks valid. Save and try using the extension to verify the connection.", "success");
-
-    testBtn.disabled = false;
-    testBtn.textContent = "Test Connection";
   }
 
   function showStatus(message, type) {
+    const token = ++statusToken;
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
-    if (type === "success" || type === "error") {
-      setTimeout(() => {
+    setTimeout(() => {
+      if (token === statusToken) {
         statusEl.className = "status hidden";
-      }, 5000);
-    }
+      }
+    }, 5000);
   }
-
 });
-

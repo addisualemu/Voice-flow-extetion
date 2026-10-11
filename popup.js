@@ -4,8 +4,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const dictateBtn = document.getElementById("dictateBtn");
   const statusEl = document.getElementById("status");
   const settingsLink = document.getElementById("settingsLink");
-  
-  let currentUserId = null;
+  const accountLine = document.getElementById("accountLine");
+
+  let currentUser = null;
+  let statusToken = 0;
   let recognition = null;
   let isListening = false;
   let textBeforeDictate = "";
@@ -26,8 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Load user ID on popup open
-  loadUserId();
+  watchAccount();
 
   // Stop recording (e.g. when user clicks input or saves)
   function stopRecording() {
@@ -72,20 +73,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Check if user ID is configured
-    if (!currentUserId) {
-      showStatus("Please configure your User ID in settings.", "error");
-      setTimeout(() => {
-        const settingsLink = document.createElement("a");
-        settingsLink.href = "#";
-        settingsLink.textContent = "Open Settings";
-        settingsLink.style.cssText = "color: #4f46e5; text-decoration: underline; cursor: pointer; font-size: 12px; margin-top: 4px; display: block;";
-        settingsLink.onclick = (e) => {
-          e.preventDefault();
-          chrome.runtime.openOptionsPage();
-        };
-        statusEl.appendChild(settingsLink);
-      }, 100);
+    const user = currentUser || await waitForSignedInUser();
+    currentUser = user;
+    if (!user) {
+      showStatus("Connect with your PIN in settings before saving.", "error", true);
+      appendSettingsLink();
       return;
     }
 
@@ -93,29 +85,14 @@ document.addEventListener("DOMContentLoaded", () => {
     saveBtn.textContent = "Saving…";
 
     try {
-      await saveTextToFirebase(text, currentUserId);
+      await saveTextToFirebase(text);
       textInput.value = "";
       showStatus("Text saved successfully!", "success");
     } catch (err) {
-      const errorMsg = err.message && (err.message.includes("API key not found") || err.message.includes("configuration not found"))
-        ? "Firebase API key not configured. Please set up your Firebase API key in settings."
-        : err.message && err.message.includes("User ID")
-        ? "Please configure your User ID in settings."
-        : "Failed to save. Check your Firebase config in settings.";
-      showStatus(errorMsg, "error");
-      // Show settings link if API key is missing
-      if (err.message && (err.message.includes("API key not found") || err.message.includes("configuration not found") || err.message.includes("User ID"))) {
-        setTimeout(() => {
-          const settingsLink = document.createElement("a");
-          settingsLink.href = "#";
-          settingsLink.textContent = "Open Settings";
-          settingsLink.style.cssText = "color: #4f46e5; text-decoration: underline; cursor: pointer; font-size: 12px; margin-top: 4px; display: block;";
-          settingsLink.onclick = (e) => {
-            e.preventDefault();
-            chrome.runtime.openOptionsPage();
-          };
-          statusEl.appendChild(settingsLink);
-        }, 100);
+      const persist = err.message && (err.message.includes("Not connected") || err.message.includes("PIN") || err.message.includes("Connect again"));
+      showStatus(err.message || "Failed to save.", "error", persist);
+      if (persist) {
+        appendSettingsLink();
       }
     } finally {
       saveBtn.disabled = false;
@@ -171,6 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     recognition.onerror = (e) => {
       if (e.error === "not-allowed") {
+        const token = ++statusToken;
         statusEl.textContent = "Chrome didn’t ask for mic (common for extensions). Allow it below:";
         statusEl.className = "status error";
         const micLink = document.createElement("a");
@@ -183,7 +161,9 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         statusEl.appendChild(micLink);
         setTimeout(() => {
-          statusEl.className = "status hidden";
+          if (token === statusToken) {
+            statusEl.className = "status hidden";
+          }
         }, 20000);
       } else if (e.error !== "aborted") {
         showStatus("Voice input error: " + (e.error || "unknown"), "error");
@@ -208,23 +188,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Show a status message that auto-hides after 3 seconds
-  function showStatus(message, type) {
+  function showStatus(message, type, persist) {
+    const token = ++statusToken;
     statusEl.textContent = message;
     statusEl.className = `status ${type}`;
+    if (persist) return;
     setTimeout(() => {
-      statusEl.className = "status hidden";
+      if (token === statusToken) {
+        statusEl.className = "status hidden";
+      }
     }, 3000);
   }
 
-  // Load user ID from settings
-  async function loadUserId() {
-    try {
-      const result = await chrome.storage.sync.get(["userId"]);
-      if (result.userId) {
-        currentUserId = result.userId;
-      }
-    } catch (error) {
-      console.error("Error loading user ID:", error);
-    }
+  function watchAccount() {
+    initializeFirebase();
+    firebase.auth().onAuthStateChanged((user) => {
+      currentUser = user;
+      if (!accountLine) return;
+      accountLine.textContent = user
+        ? (user.email ? "Connected as " + user.email : "Connected")
+        : "Not connected. Add your PIN in settings.";
+    });
+  }
+
+  function appendSettingsLink() {
+    setTimeout(() => {
+      const link = document.createElement("a");
+      link.href = "#";
+      link.textContent = "Open Settings";
+      link.style.cssText = "color: #4f46e5; text-decoration: underline; cursor: pointer; font-size: 12px; margin-top: 4px; display: block;";
+      link.onclick = (event) => {
+        event.preventDefault();
+        chrome.runtime.openOptionsPage();
+      };
+      statusEl.appendChild(link);
+    }, 100);
   }
 });

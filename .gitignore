@@ -1,6 +1,9 @@
 # Firebase SDK files (downloaded via setup.sh)
 libs/firebase-app-compat.js
+libs/firebase-auth-compat.js
 libs/firebase-firestore-compat.js
+firebase-debug.log
+*-debug.log
 
 # OS files
 .DS_Store
