@@ -40,10 +40,11 @@ linkingPins/{pin}  <--- Admin SDK --- linkWithPin (Cloud Function)
                                  users/{uid}/tasks
 ```
 
-1. **Install the extension.** Run `./setup.sh`, then in Chrome open `chrome://extensions`, turn on Developer mode, choose **Load unpacked**, and select this folder.
-2. **Deploy the linker** (once per project). See below. The extension cannot connect until `linkWithPin` is deployed.
-3. **Connect.** In Voice Flow Studio, copy the connection PIN. Open the extension’s settings (the gear in the popup) and enter that PIN. The extension sends the PIN to `linkWithPin` and signs in. The PIN is not saved on the computer.
-4. **Save.** The popup writes the task directly. A right-click save is handled by the service worker, which asks an offscreen page to write, because the service worker has no `localStorage` and that is where the Firebase session lives.
+1. **Download the Firebase SDK.** From this folder, run `./setup.sh`. It downloads `firebase-app-compat.js`, `firebase-auth-compat.js`, and `firebase-firestore-compat.js` into `libs/`. Those files are gitignored, so a fresh checkout does not include them. Without them, the settings page cannot sign in and the console reports `firebase is not defined`.
+2. **Install the extension.** In Chrome open `chrome://extensions`, turn on Developer mode, choose **Load unpacked**, and select this folder. If the extension is already loaded, reload it after running `./setup.sh`.
+3. **Deploy the linker** (once per project). See below. The extension cannot connect until `linkWithPin` is deployed.
+4. **Connect.** In Voice Flow Studio, copy the connection PIN. Open the extension’s settings (the gear in the popup) and enter that PIN. The extension sends the PIN to `linkWithPin` and signs in. The PIN is not saved on the computer.
+5. **Save.** The popup writes the task directly. A right-click save is handled by the service worker, which asks an offscreen page to write, because the service worker has no `localStorage` and that is where the Firebase session lives.
 
 The Firebase web config, including the API key, is in `firebase-config.js`. It is the same public client config the website already ships. End users never paste it.
 
